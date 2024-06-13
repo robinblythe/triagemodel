@@ -1,76 +1,112 @@
-gc()
-options(scipen=100, digits = 5)
+# Create rank map (figure 6)
+
+options(scipen = 100, digits = 5)
 library(arrow)
-library(survival)
 library(rms)
-library(dplyr)
-library(lubridate)
-import <- "insert custom filepath"
+library(tidyverse)
+import <- "custom filepath"
 df <- read_parquet(paste0(import, "df_risk.parquet"))
 
-#Full model (survival)
-fit <- readRDS("./full_model_survival.rds")
-
-#Full model (rms)
-cphfit <- readRDS("./full_model_rms.rds")
-
-#Pick time interval to demonstrate model using 6pm as the endpoint/tstop
-
-df_demo <- df |>
-  filter(Performed_DT_TM >= ymd_hms("insert custom time") & Performed_DT_TM < ymd_hms("insert custom time") & Facility == "") |>
+# Reduce dataset to only first 48 hours and drop patients with shorter LOS
+df1 <- df |>
   group_by(ID) |>
-  arrange(desc(index)) |>
-  slice(1) |>
-  ungroup() |>
-  mutate(index2 = index + as.numeric(difftime(ymd_hms("insert custom time"), Performed_DT_TM, units = "hours"))) |>
-  select("ID", "index", "index2", "outcome", "Resp_Rate", "SpO2", "SBP", "DBP", 
-         "Pulse", "Temp", "Alert", "Verbal", "Unresponsive", "O2_Therapy", "Age")
-
-#Obtain predicted risks, lp
-df_demo$pred_risk <- predict(fit, newdata = df_demo, type = "risk")
-df_demo$lp <- predict(fit, newdata = df_demo, type = "lp")
-
-#Create rounding list based on top 10 predicted risks
-roundlist <- df_demo |>
-  select(-outcome) |>
-  arrange(desc(pred_risk)) |>
-  slice_head(n = 5)
-
-roundlist <- head(read.csv("./roundlist.csv"), 5)
-
-#Plot risks for top 5 patients
-demoset <- subset(df, ID %in% roundlist$ID & 
-                    Performed_DT_TM < ymd_hms("insert custom time") & 
-                    Performed_DT_TM > ymd_hms("insert custom time"))
-demoset <- demoset |>
-  mutate(ID = as.factor(case_when(ID == roundlist$ID[1] ~ 1,
-                                  ID == roundlist$ID[2] ~ 2,
-                                  ID == roundlist$ID[3] ~ 3,
-                                  ID == roundlist$ID[4] ~ 4,
-                                  ID == roundlist$ID[5] ~ 5))) |>
+  filter(index_max > 48,
+         index2 <= 48) |>
   arrange(ID, index) |>
+  ungroup()
+
+set.seed(888)
+df_died <- df1 |>
+  filter(died_168h == 1) |>
+  filter(ID %in% sample(ID, 2))
+
+df_survived <- df1 |>
+  filter(Died == 0) |>
+  filter(ID %in% sample(ID, 8))
+
+df1 <- full_join(df_died, df_survived) |>
+  arrange(ID, Died)
+
+remove(df_died, df_survived, df_lrm)
+
+#Reduce down to single observation every 8 hours - to simulate checking every shift change
+df8 <- df1 |>
+  filter(index2 < 8) |>
   group_by(ID) |>
-  mutate(indexmax = max(index)) |>
-  mutate(index_rev = indexmax - index)
-  
+  slice_tail(n = 1) |>
+  ungroup() |>
+  arrange(desc(risk_cox)) |>
+  mutate(rank_cox = row_number(),
+         Timepoint = 8)
 
-library(ggplot2)
-cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442")
+df16 <- df1 |>
+  filter(index2 < 16) |>
+  group_by(ID) |>
+  slice_tail(n = 1) |>
+  ungroup() |>
+  arrange(desc(risk_cox)) |>
+  mutate(rank_cox = row_number(),
+         Timepoint = 16)
 
-p <- demoset |> ggplot()
-p +
-  geom_line(aes(x = index_rev, y = lp, group = ID, colour = ID), linewidth = 1.2, alpha = 0.6) +
+df24 <- df1 |>
+  filter(index2 < 24) |>
+  group_by(ID) |>
+  slice_tail(n = 1) |>
+  ungroup() |>
+  arrange(desc(risk_cox)) |>
+  mutate(rank_cox = row_number(),
+         Timepoint = 24)
+
+df32 <- df1 |>
+  filter(index2 < 32) |>
+  group_by(ID) |>
+  slice_tail(n = 1) |>
+  ungroup() |>
+  arrange(desc(risk_cox)) |>
+  mutate(rank_cox = row_number(),
+         Timepoint = 32)
+
+df40 <- df1 |>
+  filter(index2 < 40) |>
+  group_by(ID) |>
+  slice_tail(n = 1) |>
+  ungroup() |>
+  arrange(desc(risk_cox)) |>
+  mutate(rank_cox = row_number(),
+         Timepoint = 40)
+
+df48 <- df1 |>
+  filter(index2 < 48) |>
+  group_by(ID) |>
+  slice_tail(n = 1) |>
+  ungroup() |>
+  arrange(desc(risk_cox)) |>
+  mutate(rank_cox = row_number(),
+         Timepoint = 48)
+
+df_rank <- do.call(rbind, list(df8, df16, df24, df32, df40, df48))
+df_rank <- df_rank |>
+  select(ID, Timepoint, rank_cox, died_12h, died_24h, died_48h, died_72h, died_168h, Died) |>
+  mutate(ID = as.factor(as.numeric(as.factor(df_rank$ID))),
+         `Died in hospital` = as.factor(Died))
+
+remove(df1, df8, df16, df24, df32, df40, df48, fit_lrm, coxfit)
+
+p <- df_rank |>
+  ggplot(aes(x = Timepoint, y = rank_cox, group = ID))
+
+colours <- viridis::viridis(10)
+
+p + 
+  geom_line(aes(colour = ID, linetype = `Died in hospital`), linewidth = 1.5, alpha = 0.8) +
+  geom_point(aes(colour = ID), size = 3) +
+  scale_y_reverse(breaks = 1:30) +
+  scale_x_continuous(breaks = seq(8, 48, 8), limits = c(8, 48)) +
+  scale_colour_manual(values = colours) +
   theme_bw() +
   theme(panel.grid.minor = element_blank()) +
-  scale_x_reverse(limits = c(24, 0), breaks = seq(24, 0, -6)) +
-  scale_colour_manual(values = cbPalette) +
-  labs(x = "Hours",
-       y = "Predicted risk",
-       colour = "Patient")
+  labs(x = "Hours since first observation",
+       y = "Rank order from Cox model")
 
-ggsave("demoplot.jpg")
-
-#Obtain terms for roundlist to determine share of overall risk
-share <- as.data.frame(predict(fit, newdata = roundlist, type = "terms"))
-write.csv(share, file = "./roundlist_share.csv")
+ggsave("./rank_map.jpg", height = 6, width = 6)
 

@@ -1,14 +1,14 @@
 #Triage model summary statistic preparation
-gc()
 options(scipen=100, digits = 5)
 library(arrow)
-filepath <- "insert custom filepath"
-df <- read_parquet(paste0(filepath,"df_raw.parquet"))
+
+# Load cleaned raw data
+df <- read_parquet("df_raw.parquet")
 
 # Prepare data for analysis
 library(data.table)
 library(dplyr)
-window <- 24
+window <- 24 #Summarise vitals within 24 hours
 
 #Create new data.table
 df_id <- df |>
@@ -19,8 +19,7 @@ df_id <- df_id %>% select(c(ID,Admission_to_Perform,Resp_Rate,SpO2,SBP,DBP,Pulse
 #Create matching table
 df_match <- df_id |>
   select(ID, ob_time=index)
-remove(df)
-gc()
+
 
 #Create long form table
 new <- df_id[df_match, on = .(ID, start <= ob_time, index <= ob_time), nomatch = 0L]
@@ -49,8 +48,6 @@ df_summary$Admission_to_Perform.y <- NULL
 remove(means, sds, maxes, mins)
 
 #Slopes
-gc()
-
 resp_slope <- subset(new, !is.na(Resp_Rate), select = c(1,2,3,9))
 resp_slope <- resp_slope[,.(slope_Resp_Rate = coef(lm(Resp_Rate~Admission_to_Perform))[2]), by=.(ID, index)]
 
@@ -77,14 +74,10 @@ df_summary <- merge.data.table(df_summary, pulse_slope, by = c("ID", "index"), a
 df_summary <- merge.data.table(df_summary, temp_slope, by = c("ID", "index"), all.x = TRUE)
 remove(resp_slope, spo2_slope, sbp_slope, dbp_slope, pulse_slope, temp_slope, new)
 
-write_parquet(df_summary, paste0(filepath,"df_summary.parquet"))
-
-df <- as.data.table(read_parquet(paste0(filepath,"df_raw.parquet")))
 df <- merge.data.table(df, df_summary, by = c("ID", "index"), all = TRUE)
 
 #Fixing infinite values:
 invisible(lapply(names(df), function(.name) set(df, which(is.infinite(df[[.name]])), j = .name, value = NA)))
 invisible(lapply(names(df), function(.name) set(df, which(is.nan(df[[.name]])), j = .name, value = NA)))
 
-write_parquet(df, paste0(filepath,"df_prepared.parquet"))
-write_parquet(df, paste0(filepath,"/Imputed sets/df_prepared.parquet"))
+write_parquet(df, "df_prepared.parquet")
