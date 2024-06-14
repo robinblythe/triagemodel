@@ -10,8 +10,10 @@ df <- read_parquet(paste0(import, "df_risk.parquet"))
 # Reduce dataset to only first 48 hours and drop patients with shorter LOS
 df1 <- df |>
   group_by(ID) |>
-  filter(index_max > 48,
-         index2 <= 48) |>
+  filter(
+    index_max > 48,
+    index2 <= 48
+  ) |>
   arrange(ID, index) |>
   ungroup()
 
@@ -29,15 +31,17 @@ df1 <- full_join(df_died, df_survived) |>
 
 remove(df_died, df_survived, df_lrm)
 
-#Reduce down to single observation every 8 hours - to simulate checking every shift change
+# Reduce down to single observation every 8 hours - to simulate checking every shift change
 df8 <- df1 |>
   filter(index2 < 8) |>
   group_by(ID) |>
   slice_tail(n = 1) |>
   ungroup() |>
   arrange(desc(risk_cox)) |>
-  mutate(rank_cox = row_number(),
-         Timepoint = 8)
+  mutate(
+    rank_cox = row_number(),
+    Timepoint = 8
+  )
 
 df16 <- df1 |>
   filter(index2 < 16) |>
@@ -45,8 +49,10 @@ df16 <- df1 |>
   slice_tail(n = 1) |>
   ungroup() |>
   arrange(desc(risk_cox)) |>
-  mutate(rank_cox = row_number(),
-         Timepoint = 16)
+  mutate(
+    rank_cox = row_number(),
+    Timepoint = 16
+  )
 
 df24 <- df1 |>
   filter(index2 < 24) |>
@@ -54,8 +60,10 @@ df24 <- df1 |>
   slice_tail(n = 1) |>
   ungroup() |>
   arrange(desc(risk_cox)) |>
-  mutate(rank_cox = row_number(),
-         Timepoint = 24)
+  mutate(
+    rank_cox = row_number(),
+    Timepoint = 24
+  )
 
 df32 <- df1 |>
   filter(index2 < 32) |>
@@ -63,8 +71,10 @@ df32 <- df1 |>
   slice_tail(n = 1) |>
   ungroup() |>
   arrange(desc(risk_cox)) |>
-  mutate(rank_cox = row_number(),
-         Timepoint = 32)
+  mutate(
+    rank_cox = row_number(),
+    Timepoint = 32
+  )
 
 df40 <- df1 |>
   filter(index2 < 40) |>
@@ -72,8 +82,10 @@ df40 <- df1 |>
   slice_tail(n = 1) |>
   ungroup() |>
   arrange(desc(risk_cox)) |>
-  mutate(rank_cox = row_number(),
-         Timepoint = 40)
+  mutate(
+    rank_cox = row_number(),
+    Timepoint = 40
+  )
 
 df48 <- df1 |>
   filter(index2 < 48) |>
@@ -81,14 +93,18 @@ df48 <- df1 |>
   slice_tail(n = 1) |>
   ungroup() |>
   arrange(desc(risk_cox)) |>
-  mutate(rank_cox = row_number(),
-         Timepoint = 48)
+  mutate(
+    rank_cox = row_number(),
+    Timepoint = 48
+  )
 
 df_rank <- do.call(rbind, list(df8, df16, df24, df32, df40, df48))
 df_rank <- df_rank |>
   select(ID, Timepoint, rank_cox, died_12h, died_24h, died_48h, died_72h, died_168h, Died) |>
-  mutate(ID = as.factor(as.numeric(as.factor(df_rank$ID))),
-         `Died in hospital` = as.factor(Died))
+  mutate(
+    ID = as.factor(as.numeric(as.factor(df_rank$ID))),
+    `Died in hospital` = as.factor(Died)
+  )
 
 remove(df1, df8, df16, df24, df32, df40, df48, fit_lrm, coxfit)
 
@@ -97,7 +113,7 @@ p <- df_rank |>
 
 colours <- viridis::viridis(10)
 
-p + 
+p +
   geom_line(aes(colour = ID, linetype = `Died in hospital`), linewidth = 1.5, alpha = 0.8) +
   geom_point(aes(colour = ID), size = 3) +
   scale_y_reverse(breaks = 1:30) +
@@ -105,8 +121,9 @@ p +
   scale_colour_manual(values = colours) +
   theme_bw() +
   theme(panel.grid.minor = element_blank()) +
-  labs(x = "Hours since first observation",
-       y = "Rank order from Cox model")
+  labs(
+    x = "Hours since first observation",
+    y = "Rank order from Cox model"
+  )
 
 ggsave("./rank_map.jpg", height = 6, width = 6)
-
