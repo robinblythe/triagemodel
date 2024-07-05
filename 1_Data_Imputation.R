@@ -23,11 +23,12 @@ df <- df |>
 
 # Random forest impute using predictive mean matching to reduce implausible/erroneous imputations
 # Usually converges by iteration 3 on repetition, but set max iterations to 10 just in case
-# Can only single impute due to computational limitations (5.5m observations * 30 imputations = infeasible)
+# Using single imputation to facilitate use of imputation in real-time setting
 # Currently random forest imputation appears similar to MICE in terms of performance
+# To repeat imputation model using predicted outcome, delete the variables after the full stop
 library(missRanger)
 df_mr <- missRanger(df,
-  formula = Resp_Rate + SpO2 + SBP + DBP + Pulse + Temp + AVPU ~ .,
+  formula = Resp_Rate + SpO2 + SBP + DBP + Pulse + Temp + AVPU ~ . - LOS_In_Days - DISCH_DT_TM - DECEASED_DT_TM,
   pmm.k = 3,
   num.trees = 50,
   max.iter = 10,
